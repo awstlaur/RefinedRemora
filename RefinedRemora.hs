@@ -22,6 +22,8 @@ instance Out RSort
 instance Out BaseType
 instance Out RType
 
+-- at the repl, use `pp <identifier>` to invoke the pretty printer
+
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------
 ------------------------------- TYPES AND DATA ---------------------------------
@@ -40,34 +42,34 @@ data IntBinop =
     | IMin
     | IMax
     | IRem
-    deriving (Eq, Generic)
+    deriving (Eq, Generic, Show)
 
 data IntUnop =
       IAbs
     | ISgn
-    deriving (Eq, Generic)
+    deriving (Eq, Generic, Show)
 
 data BoolBinopOfInt =
       BLt
     | BEq
     | BGt
-    deriving (Eq, Generic)
+    deriving (Eq, Generic, Show)
 
 data BoolBinop =
       BAnd
     | BOr
-    deriving (Eq, Generic)
+    deriving (Eq, Generic, Show)
 
 data BoolUnop =
     BNot
-    deriving (Eq, Generic)
+    deriving (Eq, Generic, Show)
 
 data IntIndex =
       IIden Identifier
     | ILit Int
     | IBinop IntBinop IntIndex IntIndex
     | IUnop IntUnop IntIndex
-    deriving (Eq, Generic)
+    deriving (Eq, Generic, Show)
 
 data BoolIndex =
       BIden Identifier
@@ -75,12 +77,13 @@ data BoolIndex =
     | BBinopOfInt BoolBinopOfInt IntIndex IntIndex
     | BBinop BoolBinop BoolIndex BoolIndex
     | BUnop BoolUnop BoolIndex
-    deriving (Eq, Generic)
+    deriving (Eq, Generic, Show)
 
 data Index =
       IBool BoolIndex
     | IInt  IntIndex
-    deriving (Eq, Generic)
+    | IShape [IntIndex]
+    deriving (Eq, Generic, Show)
 
 data RSort =
       SInt
@@ -88,13 +91,13 @@ data RSort =
     | SShape
     | SRefine [IdenSortBinding] [BoolIndex]
     | SNatSugar
-    deriving (Eq, Generic)
+    deriving (Eq, Generic, Show)
 
 data BaseType =
       BTBool
     | BTInt
     | BTArray
-    deriving (Eq, Generic)
+    deriving (Eq, Generic, Show)
 
 data RType =
       TVar Identifier
@@ -103,7 +106,7 @@ data RType =
     | TUniv [Identifier] RType
     | TDepProd [IdenListSortBinding] RType
     | TDepSum [IdenListSortBinding] RType
-    deriving (Eq, Generic)
+    deriving (Eq, Generic, Show)
 
 desugarSort :: RSort -> RSort
 desugarSort (SRefine binds bIdxs) =
@@ -175,17 +178,22 @@ sortCheck theta (IInt (IIden x)) gamma  = elem (x, gamma) theta  -- (S-Var)
 sortCheck theta (IBool (BIden x)) gamma = elem (x, gamma) theta  -- (S-Var)
 
 sortCheck theta (IInt idx) SInt = case idx of
-    ILit n -> True
-    IBinop _ idx0 idx1 -> (checkSInt theta idx0) && (checkSInt theta idx1)
-    IUnop _ idx0 -> checkSInt theta idx0
+    ILit n -> True -- (S-Int)
+    IBinop _ idx0 idx1 -> (checkSInt theta idx0) && (checkSInt theta idx1) -- (S-IntBinop)
+    IUnop _ idx0 -> checkSInt theta idx0 -- (S-IntUnop)
     _ -> False -- failure
 
 sortCheck theta (IBool idx) SBool = case idx of
-    BLit b  -> True
-    BBinopOfInt _ idx0 idx1 -> (checkSInt theta idx0) && (checkSInt theta idx1)
-    BBinop _ idx0 idx1 -> (checkSBool theta idx0) && (checkSBool theta idx1)
-    BUnop _ idx0 -> checkSBool theta idx0
+    BLit b  -> True -- (S-Bool)
+    BBinopOfInt _ idx0 idx1 -> (checkSInt theta idx0)  && (checkSInt theta idx1)  -- (S-BoolBinopOfInt)
+    BBinop      _ idx0 idx1 -> (checkSBool theta idx0) && (checkSBool theta idx1) -- (S-BoolBinop)
+    BUnop _ idx0 -> checkSBool theta idx0 -- (S-BoolUnop)
     _ -> False -- failure
+
+sortCheck theta (IShape intIdxs) SShape =
+    and $ map (checkSInt theta) intIdxs -- (S-Shape)
+
+sortCheck _ _ _ = False -- failure
 
 -- \Delta, \Theta |- \tau
 kindCheck :: [Identifier] -> [IdenSortBinding] -> RType -> Bool
